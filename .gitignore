@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+venv/
+.venv/
+
+# Environment variables
+.env
+
+# Data files
+cell-count.csv
+*.db
+cytometry.db
+
+# Checkpoints
+checkpoints/
+
+# IDE / Editor specific
+.vscode/
+.idea/
+
+# OS specific (macOS)
+.DS_Store

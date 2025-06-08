@@ -158,45 +158,192 @@ with left_column:
     with st.expander("➖ Remove Sample", expanded=False):
         if 'confirm_removal_sample_id' not in st.session_state:
             st.session_state.confirm_removal_sample_id = None
+        if 'confirm_removal_sample_id_target' not in st.session_state:
+            st.session_state.confirm_removal_sample_id_target = None
 
         # Fetch all sample IDs for the selectbox each time to ensure it's up-to-date
-        all_sample_ids_for_removal = [''] + st.session_state.all_samples_df['sample_id'].tolist()
+        if 'all_samples_df' in st.session_state and not st.session_state.all_samples_df.empty:
+            all_sample_ids_for_removal = [''] + sorted(st.session_state.all_samples_df['sample_id'].unique().tolist())
+        else:
+            all_sample_ids_for_removal = [''] # Fallback if no samples or df not loaded
+            st.caption("No samples available for removal or data not loaded.")
+
         sample_id_to_remove = st.selectbox('Select Sample to Remove', 
                                            options=all_sample_ids_for_removal,
-                                           format_func=lambda x: x if x else 'Select a sample',
-                                           key='remove_sample_selectbox')
+                                           index=0, # Default to blank
+                                           format_func=lambda x: x if x else "Select a sample...",
+                                           key='remove_sample_select')
 
-        if sample_id_to_remove and sample_id_to_remove != st.session_state.confirm_removal_sample_id:
-             # If a new sample is selected, reset confirmation state for previous sample (if any)
+        # Reset confirmation if a different sample is selected or if blank is re-selected
+        if sample_id_to_remove != st.session_state.get('confirm_removal_sample_id_target'):
             st.session_state.confirm_removal_sample_id = None 
+            st.session_state.confirm_removal_sample_id_target = sample_id_to_remove
 
-        if sample_id_to_remove:
-            if st.button(f"Request to Remove Sample: {sample_id_to_remove}", key=f"request_remove_btn_{sample_id_to_remove}"):
-                st.session_state.confirm_removal_sample_id = sample_id_to_remove
-                st.rerun() # Rerun to show confirmation buttons
+        if sample_id_to_remove: # Only show button if a sample is selected
+            # Show 'Request to Remove' button if this sample isn't the one currently up for confirmation
+            if st.session_state.confirm_removal_sample_id != sample_id_to_remove:
+                 if st.button(f"Request to Remove: {sample_id_to_remove}", key=f"prepare_remove_{sample_id_to_remove}_btn"):
+                    st.session_state.confirm_removal_sample_id = sample_id_to_remove
+                    st.session_state.confirm_removal_sample_id_target = sample_id_to_remove # Store which sample is targeted
+                    st.rerun()
         
+        # If a sample is selected AND it's the one confirmed for removal, show warning and confirm/cancel buttons
         if st.session_state.confirm_removal_sample_id and st.session_state.confirm_removal_sample_id == sample_id_to_remove:
-            st.warning(f"Are you sure you want to remove sample {st.session_state.confirm_removal_sample_id}? This action cannot be undone.")
+            st.warning(f"Are you sure you want to remove sample '{st.session_state.confirm_removal_sample_id}'? This cannot be undone easily without reverting to a checkpoint.")
             confirm_col1, confirm_col2 = st.columns(2)
             with confirm_col1:
-                if st.button("Yes, Confirm Removal", key="confirm_remove_action_btn"):
+                if st.button(f"Yes, Remove '{st.session_state.confirm_removal_sample_id}'", type="primary", key="confirm_remove_action_btn"):
                     try:
-                        database.remove_sample(DB_FILE, st.session_state.confirm_removal_sample_id)
-                        st.success(f'Sample {st.session_state.confirm_removal_sample_id} removed successfully!')
-                        st.session_state.confirm_removal_sample_id = None # Reset confirmation
-                        # Force reload of all_samples_df and update session state
-                        database.get_all_data.clear() # Ensure next call to get_all_data is fresh
-                        st.session_state.all_samples_df = database.get_all_data(DB_FILE)
-                        # Clear other caches
-                        database.get_distinct_values.clear()
-                        st.rerun()
+                        if database.remove_sample(DB_FILE, st.session_state.confirm_removal_sample_id):
+                            st.success(f"Sample '{st.session_state.confirm_removal_sample_id}' removed.")
+                            database.get_all_data.clear()
+                            st.session_state.all_samples_df = database.get_all_data(DB_FILE)
+                            database.get_distinct_values.clear()
+                            st.session_state.confirm_removal_sample_id = None 
+                            st.session_state.confirm_removal_sample_id_target = None
+                            st.rerun()
+                        else:
+                            st.error(f"Failed to remove sample '{st.session_state.confirm_removal_sample_id}'.")
+                            st.session_state.confirm_removal_sample_id = None 
+                            st.session_state.confirm_removal_sample_id_target = None
                     except Exception as e:
                         st.error(f"Error removing sample: {str(e)}")
-                        st.session_state.confirm_removal_sample_id = None # Reset on error
+                        st.session_state.confirm_removal_sample_id = None 
+                        st.session_state.confirm_removal_sample_id_target = None
             with confirm_col2:
                 if st.button("Cancel Removal", key="cancel_remove_action_btn"):
-                    st.session_state.confirm_removal_sample_id = None # Reset confirmation
+                    st.session_state.confirm_removal_sample_id = None 
+                    st.session_state.confirm_removal_sample_id_target = None # Also reset target on cancel
                     st.rerun()
+        elif sample_id_to_remove and st.session_state.confirm_removal_sample_id and st.session_state.confirm_removal_sample_id != sample_id_to_remove:
+            # This case: a sample (A) was set for confirmation, but user selected a different one (B) from dropdown.
+            # The logic at the top (sample_id_to_remove != st.session_state.get('confirm_removal_sample_id_target'))
+            # should have reset confirm_removal_sample_id, so this state might not be typically hit if that works perfectly.
+            # However, it's a good place for a specific instruction if needed.
+            st.caption(f"To remove '{sample_id_to_remove}', click 'Request to Remove: {sample_id_to_remove}'.")
+
+
+    with st.expander("⬆️ Append Data from CSV", expanded=False):
+        uploaded_csv_file = st.file_uploader("Upload a CSV file to append", type=['csv'], key='csv_append_uploader')
+        
+        if uploaded_csv_file is not None:
+            if st.button("Append Data from CSV", key='append_csv_data_btn'):
+                with st.spinner("Processing and appending data..."):
+                    try:
+                        # The uploaded_csv_file object is directly usable by pd.read_csv
+                        success, details = database.append_csv_to_db(DB_FILE, uploaded_csv_file)
+                        
+                        if success:
+                            msg = (f"Data append process finished.\n"
+                                   f"- Rows Processed: {details.get('rows_processed', 0)}\n"
+                                   f"- New Samples Added: {details.get('samples_added', 0)}\n"
+                                   f"- Existing Samples Skipped: {details.get('samples_skipped_existing', 0)}\n"
+                                   f"- Cell Counts Added: {details.get('cell_counts_added', 0)}\n"
+                                   f"- Rows with Errors/Skipped: {details.get('rows_with_errors', 0)}")
+                            st.success(msg)
+                            
+                            # Clear caches and rerun
+                            database.get_all_data.clear()
+                            st.session_state.all_samples_df = database.get_all_data(DB_FILE)
+                            database.get_distinct_values.clear()
+                            # If you have analysis functions that cache results based on all_samples_df, clear them too.
+                            # e.g., analysis.calculate_frequency_table.clear() # Assuming such a cache exists
+                            st.rerun()
+                        else:
+                            st.error(f"Failed to append data: {details.get('error', 'Unknown error')}")
+                    except Exception as e:
+                        logger.error(f"Error during CSV append UI operation: {e}")
+                        st.error(f"An unexpected error occurred: {e}")
+                # Attempt to clear the uploader after processing by resetting its key or through a form
+                # A simple way is to ensure the key is unique or changes, or rely on rerun to refresh its state.
+                # For a more robust clear, you might need to wrap it in a form or use a more complex session state trick.
+                # st.session_state.csv_append_uploader = None # This might not always work as expected with st.file_uploader
+
+    # --- History & Checkpoints Expander ---
+    with st.expander("📜 History & Checkpoints", expanded=False):
+        st.subheader("Recent Operations")
+        try:
+            op_log_df = database.get_operation_log(DB_FILE, limit=10) 
+            if op_log_df is not None and not op_log_df.empty:
+                op_log_df_display = op_log_df.copy()
+                if 'timestamp' in op_log_df_display.columns:
+                    try:
+                        op_log_df_display['timestamp'] = pd.to_datetime(op_log_df_display['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
+                    except Exception as e:
+                        logger.warning(f"Could not format timestamp for display: {e}")
+                if 'details' in op_log_df_display.columns:
+                    op_log_df_display['details'] = op_log_df_display['details'].apply(lambda x: str(x) if isinstance(x, dict) else x)
+                st.dataframe(op_log_df_display, height=200, use_container_width=True)
+            else:
+                st.caption("No operations logged yet.")
+        except Exception as e:
+            st.error(f"Error loading operation log: {e}")
+            logger.error(f"Error loading operation log in UI: {e}")
+
+        st.subheader("Database Checkpoints")
+        if st.button("Create New Checkpoint", key='create_checkpoint_btn'):
+            checkpoint_path = database.create_db_checkpoint(DB_FILE)
+            if checkpoint_path:
+                st.success(f"Checkpoint created: {os.path.basename(checkpoint_path)}")
+                st.rerun() 
+            else:
+                st.error("Failed to create checkpoint.")
+        
+        list_of_checkpoints = database.list_db_checkpoints(DB_FILE)
+
+        if list_of_checkpoints:
+            checkpoint_files = sorted([os.path.basename(p) for p in list_of_checkpoints], reverse=True) # Show newest first
+            selected_checkpoint_file = st.selectbox("Select Checkpoint to Revert To", 
+                                               options=[''] + checkpoint_files, 
+                                               format_func=lambda x: x if x else "Select a checkpoint...",
+                                               key='select_checkpoint_revert')
+            
+            if selected_checkpoint_file:
+                selected_checkpoint_full_path = next((p for p in list_of_checkpoints if os.path.basename(p) == selected_checkpoint_file), None)
+
+                if selected_checkpoint_full_path:
+                    # Initialize session state for revert confirmation
+                    if 'confirm_revert_target' not in st.session_state:
+                        st.session_state.confirm_revert_target = None
+                    if 'show_revert_confirmation' not in st.session_state:
+                        st.session_state.show_revert_confirmation = False
+
+                    # If selection changed, reset confirmation
+                    if st.session_state.confirm_revert_target != selected_checkpoint_full_path:
+                        st.session_state.show_revert_confirmation = False
+                        st.session_state.confirm_revert_target = selected_checkpoint_full_path
+
+                    if not st.session_state.show_revert_confirmation:
+                        if st.button("Prepare to Revert to this Checkpoint", key='prepare_revert_btn'):
+                            st.session_state.show_revert_confirmation = True
+                            st.session_state.confirm_revert_target = selected_checkpoint_full_path # Ensure target is set
+                            st.rerun()
+                    else: # Show confirmation dialog
+                        st.warning(f"Are you sure you want to revert to checkpoint '{selected_checkpoint_file}'? This will replace the current database and cannot be undone easily.")
+                        revert_confirm_col1, revert_confirm_col2 = st.columns(2)
+                        with revert_confirm_col1:
+                            if st.button("Yes, Confirm Revert", type="primary", key="confirm_revert_action"):
+                                if database.revert_to_db_checkpoint(DB_FILE, selected_checkpoint_full_path):
+                                    st.success(f"Successfully reverted to {selected_checkpoint_file}. App is refreshing.")
+                                    st.cache_data.clear()
+                                    st.cache_resource.clear()
+                                    database.get_all_data.clear() 
+                                    st.session_state.all_samples_df = database.get_all_data(DB_FILE)
+                                    database.get_distinct_values.clear()
+                                    # Reset revert confirmation state
+                                    st.session_state.show_revert_confirmation = False
+                                    st.session_state.confirm_revert_target = None
+                                    st.rerun()
+                                else:
+                                    st.error(f"Failed to revert to {selected_checkpoint_file}.")
+                                    st.session_state.show_revert_confirmation = False # Reset on error
+                        with revert_confirm_col2:
+                            if st.button("Cancel Revert", key="cancel_revert_action"):
+                                st.session_state.show_revert_confirmation = False
+                                # st.session_state.confirm_revert_target = None # Keep target or clear? Clear for now.
+                                st.rerun()
+        else:
+            st.caption("No checkpoints available yet.")
 
 # --- Data Processing based on filters (after left_column is defined) ---
 if any([selected_project, selected_condition, selected_treatment, selected_response]):
