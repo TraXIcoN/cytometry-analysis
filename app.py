@@ -7,7 +7,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from uuid import uuid4
 
-import database
+import db_layer as database
 import analysis
 import utils
 
@@ -242,10 +242,26 @@ with left_column:
                                    f"- Rows with Errors/Skipped: {details.get('rows_with_errors', 0)}")
                             st.success(msg)
                             
-                            # Clear caches and rerun
+                            # Log the detailed feedback from append_csv_to_db
+                            logger.info(f"Append CSV feedback_append: {details}")
+
+                            # --- BEGIN DIAGNOSTIC LOGGING ---
+                            raw_sample_ids_from_table = database.get_all_sample_ids_from_samples_table(DB_FILE)
+                            # The function get_all_sample_ids_from_samples_table logs the list and count internally.
+                            logger.info(f"DIAGNOSTIC - App.py: Count of raw sample_ids from 'samples' table after append: {len(raw_sample_ids_from_table)}")
+                            
+                            # Original cache clearing and data reloading
                             database.get_all_data.clear()
                             st.session_state.all_samples_df = database.get_all_data(DB_FILE)
                             database.get_distinct_values.clear()
+
+                            # New logging for processed IDs from get_all_data
+                            if not st.session_state.all_samples_df.empty and 'sample_id' in st.session_state.all_samples_df.columns:
+                                processed_sample_ids = sorted(st.session_state.all_samples_df['sample_id'].unique().tolist())
+                                logger.info(f"DIAGNOSTIC - Unique sample_ids from get_all_data DataFrame after append ({len(processed_sample_ids)}): {processed_sample_ids}")
+                            else:
+                                logger.info("DIAGNOSTIC - get_all_data DataFrame is empty or missing 'sample_id' column after append.")
+                            # --- END DIAGNOSTIC LOGGING ---
                             # If you have analysis functions that cache results based on all_samples_df, clear them too.
                             # e.g., analysis.calculate_frequency_table.clear() # Assuming such a cache exists
                             st.rerun()

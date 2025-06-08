@@ -370,7 +370,8 @@ def get_data_for_frequency_table(db_file):
     conn = sqlite3.connect(db_file)
     try:
         df = pd.read_sql_query('''
-            SELECT s.sample_id, c.population, c.count
+            SELECT s.sample_id, c.population, c.count,
+                   SUM(c.count) OVER (PARTITION BY s.sample_id) as total_count
             FROM samples s
             JOIN cell_counts c ON s.sample_id = c.sample_id
         ''', conn)
@@ -383,7 +384,8 @@ def get_data_for_treatment_response_analysis(db_file):
     try:
         df = pd.read_sql_query('''
             SELECT s.sample_id, s.condition, s.treatment, s.response, s.sample_type,
-                   c.population, c.count
+                   c.population, c.count,
+                   SUM(c.count) OVER (PARTITION BY s.sample_id) as total_count
             FROM samples s
             JOIN cell_counts c ON s.sample_id = c.sample_id
             WHERE s.condition = 'melanoma' AND s.treatment = 'tr1' AND s.sample_type = 'PBMC'

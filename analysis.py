@@ -2,17 +2,14 @@ import pandas as pd
 import scipy.stats as stats
 import plotly.express as px
 import plotly.graph_objects as go 
-import database
+import db_layer as database
 
 def calculate_frequency_table(db_file):
     df = database.get_data_for_frequency_table(db_file)
-    if df.empty or 'count' not in df.columns or 'sample_id' not in df.columns:
+    if df.empty or 'count' not in df.columns or 'sample_id' not in df.columns or 'total_count' not in df.columns:
         return pd.DataFrame(columns=['sample_id', 'population', 'count', 'total_count', 'percentage'])
-        
-    total_counts = df.groupby('sample_id')['count'].sum().reset_index()
-    total_counts = total_counts.rename(columns={'count': 'total_count'})
     
-    df = df.merge(total_counts, on='sample_id')
+    # Total counts are now pre-calculated in the SQL query
     # Ensure 'total_count' is not zero to avoid division by zero
     df['percentage'] = df.apply(lambda row: round(row['count'] / row['total_count'] * 100, 2) if row['total_count'] > 0 else 0, axis=1)
     
@@ -23,12 +20,10 @@ def perform_treatment_response_analysis(db_file):
     if df.empty:
         return pd.DataFrame(), [], go.Figure()
 
-    if 'count' not in df.columns or 'sample_id' not in df.columns:
+    if 'count' not in df.columns or 'sample_id' not in df.columns or 'total_count' not in df.columns:
         return df, [], go.Figure() # Return original df if critical columns missing for processing
 
-    total_counts = df.groupby('sample_id')['count'].sum().reset_index()
-    total_counts = total_counts.rename(columns={'count': 'total_count'})
-    df = df.merge(total_counts, on='sample_id')
+    # Total counts are now pre-calculated in the SQL query
     df['percentage'] = df.apply(lambda row: round(row['count'] / row['total_count'] * 100, 2) if row['total_count'] > 0 else 0, axis=1)
     
     results = []
