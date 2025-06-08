@@ -1,4 +1,5 @@
 import streamlit as st
+import logging
 import os
 import pandas as pd
 from datetime import datetime
@@ -10,16 +11,33 @@ import database
 import analysis
 import utils
 
+st.set_page_config(layout="wide", page_title="Cytometry Data Analysis")
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    force=True # Ensure our config takes precedence if Streamlit also configures logging
+)
+logger = logging.getLogger(__name__)
+
 # Initialize database and load initial data if CSV exists
 DB_FILE = 'cytometry.db'
-CSV_FILE = 'cell-count.csv' # Ensure this file is in the same directory or provide full path
+CSV_FILE = 'cell-count.csv'
+logger.info(f"Checking for database file: {DB_FILE}") # Ensure this file is in the same directory or provide full path
 
-database.init_db(DB_FILE)
-if os.path.exists(CSV_FILE):
+if not os.path.exists(DB_FILE):
+    logger.info(f"Database file {DB_FILE} not found. Initializing and loading data.")
+    database.init_db(DB_FILE) # Moved here
     database.load_csv_to_db(DB_FILE, CSV_FILE)
+else:
+    logger.info(f"Database file {DB_FILE} found. Skipping initialization.")
+
+# Initialize all_samples_df in session state
+if 'all_samples_df' not in st.session_state:
+    st.session_state.all_samples_df = database.get_all_data(DB_FILE)
 
 # Streamlit UI
-st.set_page_config(layout="wide") # Use wide layout
 st.title('Cytometry Data Analysis')
 
 # --- Data Fetching for Filters (runs early) ---
@@ -111,10 +129,29 @@ with left_column:
                         st.error(f"Please fill in all required fields: {', '.join(missing)}")
                     else:
                         try:
+                            # Strip whitespace from user-defined project/treatment if they are strings
+                            project_val = add_sample_data.get('project')
+                            if isinstance(project_val, str):
+                                add_sample_data['project'] = project_val.strip()
+
+                            treatment_val = add_sample_data.get('treatment')
+                            if isinstance(treatment_val, str):
+                                add_sample_data['treatment'] = treatment_val.strip()
+
+                            # Convert condition to lowercase
+                            condition_val = add_sample_data.get('condition')
+                            if isinstance(condition_val, str):
+                                add_sample_data['condition'] = condition_val.strip().lower()
+
                             add_sample_data['sample_id'] = f"sample_{uuid4().hex[:8]}" # Shorter UUID
                             database.add_sample(DB_FILE, add_sample_data)
                             st.success('Sample added successfully!')
-                            st.experimental_rerun()
+                            # Force reload of all_samples_df and update session state
+                            database.get_all_data.clear() # Ensure next call to get_all_data is fresh
+                            st.session_state.all_samples_df = database.get_all_data(DB_FILE)
+                            # Clear other caches
+                            database.get_distinct_values.clear()
+                            st.rerun()
                         except Exception as e:
                             st.error(f"Error adding sample: {str(e)}")
 
@@ -123,7 +160,7 @@ with left_column:
             st.session_state.confirm_removal_sample_id = None
 
         # Fetch all sample IDs for the selectbox each time to ensure it's up-to-date
-        all_sample_ids_for_removal = [''] + database.get_all_data(DB_FILE)['sample_id'].tolist()
+        all_sample_ids_for_removal = [''] + st.session_state.all_samples_df['sample_id'].tolist()
         sample_id_to_remove = st.selectbox('Select Sample to Remove', 
                                            options=all_sample_ids_for_removal,
                                            format_func=lambda x: x if x else 'Select a sample',
@@ -136,7 +173,7 @@ with left_column:
         if sample_id_to_remove:
             if st.button(f"Request to Remove Sample: {sample_id_to_remove}", key=f"request_remove_btn_{sample_id_to_remove}"):
                 st.session_state.confirm_removal_sample_id = sample_id_to_remove
-                st.experimental_rerun() # Rerun to show confirmation buttons
+                st.rerun() # Rerun to show confirmation buttons
         
         if st.session_state.confirm_removal_sample_id and st.session_state.confirm_removal_sample_id == sample_id_to_remove:
             st.warning(f"Are you sure you want to remove sample {st.session_state.confirm_removal_sample_id}? This action cannot be undone.")
@@ -147,15 +184,19 @@ with left_column:
                         database.remove_sample(DB_FILE, st.session_state.confirm_removal_sample_id)
                         st.success(f'Sample {st.session_state.confirm_removal_sample_id} removed successfully!')
                         st.session_state.confirm_removal_sample_id = None # Reset confirmation
-                        # To refresh the selectbox, we might need to clear its specific state if Streamlit caches it aggressively
-                        st.experimental_rerun()
+                        # Force reload of all_samples_df and update session state
+                        database.get_all_data.clear() # Ensure next call to get_all_data is fresh
+                        st.session_state.all_samples_df = database.get_all_data(DB_FILE)
+                        # Clear other caches
+                        database.get_distinct_values.clear()
+                        st.rerun()
                     except Exception as e:
                         st.error(f"Error removing sample: {str(e)}")
                         st.session_state.confirm_removal_sample_id = None # Reset on error
             with confirm_col2:
                 if st.button("Cancel Removal", key="cancel_remove_action_btn"):
                     st.session_state.confirm_removal_sample_id = None # Reset confirmation
-                    st.experimental_rerun()
+                    st.rerun()
 
 # --- Data Processing based on filters (after left_column is defined) ---
 if any([selected_project, selected_condition, selected_treatment, selected_response]):
@@ -167,7 +208,7 @@ if any([selected_project, selected_condition, selected_treatment, selected_respo
         selected_response=selected_response
     )
 else:
-    ndf = database.get_all_data(DB_FILE)
+    ndf = st.session_state.all_samples_df
 
 # --- Right Column: Data Display and Analysis ---
 with right_column:
@@ -183,10 +224,10 @@ with right_column:
     st.dataframe(display_df)
 
     if show_filtered_only and not display_df.empty:
-        st.markdown(utils.get_table_download_link(display_df, f"filtered_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
+        st.markdown(utils.get_table_download_link(display_df, f"filtered_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"),
                     unsafe_allow_html=True)
     elif not show_filtered_only and not display_df.empty:
-         st.markdown(utils.get_table_download_link(display_df, f"all_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"), 
+         st.markdown(utils.get_table_download_link(display_df, f"all_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"),
                     unsafe_allow_html=True)
 
     st.header('Summary Statistics')

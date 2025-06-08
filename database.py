@@ -1,10 +1,16 @@
 import sqlite3
 import pandas as pd
+import streamlit as st
+import logging
 from uuid import uuid4
 
+logger = logging.getLogger(__name__)
+
 def init_db(db_file):
+    logger.info(f"init_db: Connecting to {db_file}")
     conn = sqlite3.connect(db_file)
     c = conn.cursor()
+    logger.info(f"init_db: Connection and cursor established for {db_file}")
     # Drop existing tables if they exist
     c.execute('DROP TABLE IF EXISTS cell_counts')
     c.execute('DROP TABLE IF EXISTS samples')
@@ -23,6 +29,7 @@ def init_db(db_file):
             time_from_treatment_start INTEGER
         )
     ''')
+    logger.info("init_db: CREATE TABLE IF NOT EXISTS samples statement executed.")
     c.execute('''
         CREATE TABLE cell_counts (
             id TEXT PRIMARY KEY,
@@ -32,8 +39,12 @@ def init_db(db_file):
             FOREIGN KEY (sample_id) REFERENCES samples (sample_id)
         )
     ''')
+    logger.info("init_db: CREATE TABLE IF NOT EXISTS cell_counts statement executed.")
+    logger.info("init_db: Attempting to commit changes.")
     conn.commit()
+    logger.info("init_db: Commit successful.")
     conn.close()
+    logger.info(f"init_db: Connection to {db_file} closed.")
 
 def load_csv_to_db(db_file, csv_file):
     conn = sqlite3.connect(db_file)
@@ -46,9 +57,16 @@ def load_csv_to_db(db_file, csv_file):
                 treatment, response, sample_type, time_from_treatment_start
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
-            row['sample'], row['project'], row['subject'], row['condition'],
-            row['age'], row['sex'], row['treatment'], row['response'],
-            row['sample_type'], row['time_from_treatment_start']
+            row['sample'], 
+            str(row['project']).strip() if pd.notna(row['project']) else None, 
+            str(row['subject']).strip() if pd.notna(row['subject']) else None, 
+            str(row['condition']).strip().lower() if pd.notna(row['condition']) else None, 
+            row['age'], 
+            str(row['sex']).strip() if pd.notna(row['sex']) else None, 
+            str(row['treatment']).strip() if pd.notna(row['treatment']) else None, 
+            str(row['response']).strip() if pd.notna(row['response']) else None, 
+            str(row['sample_type']).strip() if pd.notna(row['sample_type']) else None, 
+            row['time_from_treatment_start']
         ))
         for pop in ['b_cell', 'cd8_t_cell', 'cd4_t_cell', 'nk_cell', 'monocyte']:
             if pop in row and pd.notna(row[pop]):
@@ -83,13 +101,16 @@ def add_sample(db_file, sample_data):
     conn.close()
 
 def remove_sample(db_file, sample_id):
+    logger.info(f"Attempting to remove sample_id: {sample_id}")
     conn = sqlite3.connect(db_file)
     c = conn.cursor()
     c.execute('DELETE FROM samples WHERE sample_id = ?', (sample_id,))
     c.execute('DELETE FROM cell_counts WHERE sample_id = ?', (sample_id,))
     conn.commit()
+    logger.info(f"Successfully removed sample_id: {sample_id}")
     conn.close()
 
+@st.cache_data
 def get_distinct_values(db_file, column_name, table_name='samples'):
     conn = sqlite3.connect(db_file)
     try:
@@ -104,6 +125,7 @@ def get_filtered_data(db_file, selected_project=None,
                       selected_treatment=None, selected_response=None):
     conn = sqlite3.connect(db_file)
     try:
+        logger.info(f"get_filtered_data called with: projects={selected_project}, conditions={selected_condition}, treatments={selected_treatment}, responses={selected_response}")
         query = """
             SELECT s.*,
                    b_cell, cd8_t_cell, cd4_t_cell, nk_cell, monocyte
@@ -154,12 +176,21 @@ def get_filtered_data(db_file, selected_project=None,
             query += " WHERE " + " AND ".join(conditions_clauses)
         
         # Ensure params is a tuple for sqlite3, or None if empty
-        df = pd.read_sql(query, conn, params=tuple(params) if params else None)
+        final_params = tuple(params) if params else None
+        logger.info(f"get_filtered_data SQL Query: {query}")
+        logger.info(f"get_filtered_data SQL Params: {final_params}")
+        df = pd.read_sql(query, conn, params=final_params)
+        if not df.empty:
+            logger.info(f"get_filtered_data returned sample_ids: {df['sample_id'].tolist()}")
+        else:
+            logger.info("get_filtered_data returned empty DataFrame")
         return df
     finally:
         conn.close()
 
+@st.cache_data
 def get_all_data(db_file):
+    logger.info(f"get_all_data: Connecting to {db_file} to fetch all samples.")
     conn = sqlite3.connect(db_file)
     try:
         query = """
@@ -178,9 +209,15 @@ def get_all_data(db_file):
                 GROUP BY sample_id
             ) c ON s.sample_id = c.sample_id
         """
-        df = pd.read_sql(query, conn)
+        logger.info(f"get_all_data: SQL Query: {query}")
+        df = pd.read_sql_query(query, conn)
+        if not df.empty:
+            logger.info(f"get_all_data: Fetched {len(df)} samples. Sample IDs: {df['sample_id'].tolist()}")
+        else:
+            logger.info("get_all_data: Fetched 0 samples.")
         return df
     finally:
+        logger.info(f"get_all_data: Closing connection to {db_file}.")
         conn.close()
 
 def get_data_for_frequency_table(db_file):
