@@ -46,6 +46,7 @@ from .query_executor import (
     get_data_for_frequency_table,
     get_data_for_treatment_response_analysis,
     get_data_for_baseline_analysis,
+    get_data_for_custom_baseline_query, # Added for custom query
     get_all_sample_ids_from_samples_table
 )
 
@@ -79,6 +80,8 @@ __all__ = [
     'get_data_for_frequency_table',
     'get_data_for_treatment_response_analysis',
     'get_data_for_baseline_analysis',
+    'get_data_for_custom_baseline_query',
+    'get_all_sample_ids_from_samples_table', # Ensure all query_executor functions are listed
     # admin_manager
     'log_operation',
     'get_operation_log',

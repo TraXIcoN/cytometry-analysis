@@ -383,106 +383,186 @@ with right_column:
     else:
         display_df = database.get_all_data(DB_FILE)
 
-    st.subheader('Sample Data')
-    st.dataframe(display_df)
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "Viewer & Summary", 
+        "Cell Population Plots", 
+        "Frequency Table", 
+        "Treatment Response", 
+        "Baseline Characteristics", 
+        "Custom Baseline Query"
+    ])
 
-    if show_filtered_only and not display_df.empty:
-        st.markdown(utils.get_table_download_link(display_df, f"filtered_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"),
-                    unsafe_allow_html=True)
-    elif not show_filtered_only and not display_df.empty:
-         st.markdown(utils.get_table_download_link(display_df, f"all_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"),
-                    unsafe_allow_html=True)
+    with tab1:
+        st.subheader('Sample Data')
+        st.dataframe(display_df)
 
-    st.header('Summary Statistics')
-    if not ndf.empty:
-        summary_col1, summary_col2, summary_col3 = st.columns(3)
-        with summary_col1:
-            st.metric("Total Samples (in selection)", len(ndf))
-            st.metric("Unique Subjects (in selection)", ndf['subject'].nunique())
-        with summary_col2:
-            st.metric("Average Age (in selection)", f"{ndf['age'].mean():.1f} years" if not ndf['age'].empty else "N/A")
-            st.metric("Gender Distribution (in selection)", f"{ndf['sex'].value_counts().to_dict()}" if not ndf['sex'].empty else "N/A")
-        with summary_col3:
-            if 'response' in ndf.columns and not ndf['response'].empty:
-                response_counts = ndf['response'].value_counts()
-                st.metric("Response Rate (in selection)", 
-                         f"{response_counts.get('y', 0) / len(ndf) * 100:.1f}%" if len(ndf) > 0 else "N/A")
-            else:
-                st.metric("Response Rate (in selection)", "N/A")
-    else:
-        st.info("No data in current selection for summary statistics.")
+        if show_filtered_only and not display_df.empty:
+            st.markdown(utils.get_table_download_link(display_df, f"filtered_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"),
+                        unsafe_allow_html=True)
+        elif not show_filtered_only and not display_df.empty:
+             st.markdown(utils.get_table_download_link(display_df, f"all_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"),
+                        unsafe_allow_html=True)
 
-    st.header('Cell Population Analysis')
-    # Use ndf for analysis plots, as it reflects the user's filter selection
-    if not ndf.empty:
-        cell_cols_plot = ['b_cell', 'cd8_t_cell', 'cd4_t_cell', 'nk_cell', 'monocyte']
-        plot_type = st.selectbox('Select Plot Type', ['Bar Chart', 'Box Plot', 'Violin Plot', 'Scatter Plot'], key='plot_type_select')
-        group_by_options = ['None'] + [col for col in ['project', 'condition', 'treatment', 'response', 'sex', 'sample_type'] if col in ndf.columns and ndf[col].nunique() > 0]
-        group_by = st.selectbox('Group By', group_by_options, key='plot_group_by_select')
-
-        plot_df_melted = ndf.melt(
-            id_vars=[col for col in ndf.columns if col not in cell_cols_plot],
-            value_vars=cell_cols_plot,
-            var_name='Cell Type',
-            value_name='Count'
-        )
-
-        fig = None
-        title_suffix = f"by {group_by.capitalize() if group_by != 'None' else 'Cell Type'}"
-        if plot_type == 'Bar Chart':
-            fig = px.bar(plot_df_melted, x=group_by if group_by != 'None' else 'Cell Type', y='Count', 
-                         color='Cell Type' if group_by == 'None' else group_by, 
-                         barmode='group' if group_by != 'None' else 'relative',
-                         title=f'Cell Counts {title_suffix}', color_discrete_sequence=px.colors.qualitative.Plotly)
-        elif plot_type == 'Box Plot':
-            fig = px.box(plot_df_melted, x=group_by if group_by != 'None' else 'Cell Type', y='Count', 
-                         color=group_by if group_by != 'None' else 'Cell Type', 
-                         title=f'Distribution of Cell Counts {title_suffix}', color_discrete_sequence=px.colors.qualitative.Plotly)
-        elif plot_type == 'Violin Plot':
-            fig = px.violin(plot_df_melted, x=group_by if group_by != 'None' else 'Cell Type', y='Count', 
-                           color=group_by if group_by != 'None' else 'Cell Type', box=True, 
-                           title=f'Distribution of Cell Counts {title_suffix}', color_discrete_sequence=px.colors.qualitative.Plotly)
-        elif plot_type == 'Scatter Plot' and 'age' in ndf.columns:
-            fig = px.scatter(plot_df_melted, x='age', y='Count', 
-                             color=group_by if group_by != 'None' else 'Cell Type', size='Count', 
-                             hover_data=['subject', 'sample_type'], title=f'Cell Counts by Age {title_suffix}', 
-                             color_discrete_sequence=px.colors.qualitative.Plotly)
-        elif plot_type == 'Scatter Plot':
-            st.warning("'age' column not available or selected for scatter plot grouping.")
-
-        if fig:
-            fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                              xaxis_title=group_by.capitalize() if group_by != 'None' else 'Cell Type',
-                              yaxis_title='Cell Count', legend_title_text='', height=600)
-            st.plotly_chart(fig, use_container_width=True)
-        elif plot_type == 'Scatter Plot' and 'age' not in ndf.columns:
-            pass # Warning already shown
+        st.header('Summary Statistics')
+        if not ndf.empty:
+            summary_col1, summary_col2, summary_col3 = st.columns(3)
+            with summary_col1:
+                st.metric("Total Samples (in selection)", len(ndf))
+                st.metric("Unique Subjects (in selection)", ndf['subject'].nunique())
+            with summary_col2:
+                st.metric("Average Age (in selection)", f"{ndf['age'].mean():.1f} years" if not ndf['age'].empty else "N/A")
+                st.metric("Gender Distribution (in selection)", f"{ndf['sex'].value_counts().to_dict()}" if not ndf['sex'].empty else "N/A")
+            with summary_col3:
+                if 'response' in ndf.columns and not ndf['response'].empty:
+                    response_counts = ndf['response'].value_counts()
+                    st.metric("Response Rate (in selection)", 
+                             f"{response_counts.get('y', 0) / len(ndf) * 100:.1f}%" if len(ndf) > 0 else "N/A")
+                else:
+                    st.metric("Response Rate (in selection)", "N/A")
         else:
-            st.info("Select plot type and grouping options.")
-    else:
-        st.info('No data in current selection for cell population analysis.')
+            st.info("No data in current selection for summary statistics.")
 
-    # Frequency Table Analysis - uses all data by default from analysis.py
-    st.header('Frequency Table Analysis (All Data)')
-    freq_table = analysis.calculate_frequency_table(DB_FILE)
-    st.dataframe(freq_table)
-    if not freq_table.empty:
-        st.markdown(utils.get_table_download_link(freq_table, "frequency_table_all_data.csv"), unsafe_allow_html=True)
+    with tab2:
+        st.header('Cell Population Analysis')
+        if not ndf.empty:
+            cell_cols_plot = ['b_cell', 'cd8_t_cell', 'cd4_t_cell', 'nk_cell', 'monocyte']
+            plot_type = st.selectbox('Select Plot Type', ['Bar Chart', 'Box Plot', 'Violin Plot', 'Scatter Plot'], key='plot_type_select_tab')
+            group_by_options = ['None'] + [col for col in ['project', 'condition', 'treatment', 'response', 'sex', 'sample_type'] if col in ndf.columns and ndf[col].nunique() > 0]
+            group_by = st.selectbox('Group By', group_by_options, key='plot_group_by_select_tab')
 
-    # Treatment Response Analysis - uses specific filtered data from analysis.py
-    st.header('Treatment Response Analysis (Melanoma, TR1, PBMC)')
-    treatment_df, treatment_results, treatment_fig = analysis.perform_treatment_response_analysis(DB_FILE)
-    if not treatment_df.empty:
-        st.subheader('Data')
-        st.dataframe(treatment_df)
-        st.subheader('Statistical Results')
-        st.dataframe(pd.DataFrame(treatment_results))
-        st.subheader('Plot')
-        st.plotly_chart(treatment_fig, use_container_width=True)
-    else:
-        st.info('No data available for standard treatment response analysis (melanoma, tr1, PBMC).')
+            plot_df_melted = ndf.melt(
+                id_vars=[col for col in ndf.columns if col not in cell_cols_plot],
+                value_vars=cell_cols_plot,
+                var_name='Cell Type',
+                value_name='Count'
+            )
 
-    # Baseline Characteristics Analysis - uses all data by default from analysis.py
-    st.header('Baseline Characteristics Analysis (All Data)')
-    baseline_results = analysis.perform_baseline_analysis(DB_FILE)
-    st.json(baseline_results)
+            fig = None
+            title_suffix = f"by {group_by.capitalize() if group_by != 'None' else 'Cell Type'}"
+            if plot_type == 'Bar Chart':
+                fig = px.bar(plot_df_melted, x=group_by if group_by != 'None' else 'Cell Type', y='Count', 
+                             color='Cell Type' if group_by == 'None' else group_by, 
+                             barmode='group' if group_by != 'None' else 'relative',
+                             title=f'Cell Counts {title_suffix}', color_discrete_sequence=px.colors.qualitative.Plotly)
+            elif plot_type == 'Box Plot':
+                fig = px.box(plot_df_melted, x=group_by if group_by != 'None' else 'Cell Type', y='Count', 
+                             color=group_by if group_by != 'None' else 'Cell Type', 
+                             title=f'Distribution of Cell Counts {title_suffix}', color_discrete_sequence=px.colors.qualitative.Plotly)
+            elif plot_type == 'Violin Plot':
+                fig = px.violin(plot_df_melted, x=group_by if group_by != 'None' else 'Cell Type', y='Count', 
+                               color=group_by if group_by != 'None' else 'Cell Type', box=True, 
+                               title=f'Distribution of Cell Counts {title_suffix}', color_discrete_sequence=px.colors.qualitative.Plotly)
+            elif plot_type == 'Scatter Plot' and 'age' in ndf.columns:
+                fig = px.scatter(plot_df_melted, x='age', y='Count', 
+                                 color=group_by if group_by != 'None' else 'Cell Type', size='Count', 
+                                 hover_data=['subject', 'sample_type'], title=f'Cell Counts by Age {title_suffix}', 
+                                 color_discrete_sequence=px.colors.qualitative.Plotly)
+            elif plot_type == 'Scatter Plot':
+                st.warning("'age' column not available or selected for scatter plot grouping.")
+
+            if fig:
+                fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                                  xaxis_title=group_by.capitalize() if group_by != 'None' else 'Cell Type',
+                                  yaxis_title='Cell Count', legend_title_text='', height=600)
+                st.plotly_chart(fig, use_container_width=True)
+            elif plot_type == 'Scatter Plot' and 'age' not in ndf.columns:
+                pass # Warning already shown
+            else:
+                st.info("Select plot type and grouping options.")
+        else:
+            st.info('No data in current selection for cell population analysis.')
+
+    with tab3:
+        st.header('Frequency Table Analysis (All Data)')
+        freq_table = analysis.calculate_frequency_table(DB_FILE)
+        st.dataframe(freq_table)
+        if not freq_table.empty:
+            st.markdown(utils.get_table_download_link(freq_table, "frequency_table_all_data.csv"), unsafe_allow_html=True)
+
+    with tab4:
+        st.header('Treatment Response Analysis (Melanoma, TR1, PBMC)')
+        treatment_df, treatment_results, treatment_fig = analysis.perform_treatment_response_analysis(DB_FILE)
+        if not treatment_df.empty:
+            st.subheader('Data')
+            st.dataframe(treatment_df)
+            st.subheader('Statistical Results')
+            st.dataframe(pd.DataFrame(treatment_results))
+            st.subheader('Plot')
+            st.plotly_chart(treatment_fig, use_container_width=True)
+
+            st.subheader('Summary Report')
+            if treatment_results:
+                significant_findings = []
+                non_significant_findings = []
+                not_calculable = []
+                for res in treatment_results:
+                    if res['significant'] == True:
+                        significant_findings.append(f"- **{res['population']}**: Shows a statistically significant difference in relative frequencies between responders and non-responders (p-value: {res['p_value']}).")
+                    elif res['significant'] == False:
+                        non_significant_findings.append(f"- **{res['population']}**: Does not show a statistically significant difference (p-value: {res['p_value']}).")
+                    else: # 'N/A'
+                        not_calculable.append(f"- **{res['population']}**: Significance could not be determined (insufficient data for t-test).")
+                
+                if significant_findings:
+                    st.markdown("**Significant Differences Observed:**")
+                    for finding in significant_findings:
+                        st.markdown(finding)
+                else:
+                    st.markdown("No cell populations showed a statistically significant difference in this dataset.")
+                
+                if non_significant_findings:
+                    st.markdown("\n**No Significant Differences Observed:**")
+                    for finding in non_significant_findings:
+                        st.markdown(finding)
+
+                if not_calculable:
+                    st.markdown("\n**Could Not Calculate Significance:**")
+                    for finding in not_calculable:
+                        st.markdown(finding)
+            else:
+                st.markdown("Statistical analysis results are not available to generate a report.")
+        else:
+            st.info('No data available for standard treatment response analysis (melanoma, tr1, PBMC).')
+
+    with tab5:
+        st.header('Baseline Characteristics Analysis (All Data)')
+        baseline_results = analysis.perform_baseline_analysis(DB_FILE)
+        if baseline_results and baseline_results['total_samples'] > 0:
+            st.write(f"Total Samples (All Data, Baseline): {baseline_results['total_samples']}")
+            st.write("Samples per project:", baseline_results['samples_per_project'])
+            st.write("Response counts:", baseline_results['response_counts'])
+            st.write("Sex counts:", baseline_results['sex_counts'])
+        else:
+            st.info("No data for general baseline characteristics analysis.")
+
+    with tab6:
+        st.header('Custom Baseline Query: Melanoma PBMC, TR1, Baseline')
+        custom_baseline_data = analysis.perform_custom_baseline_query_analysis(DB_FILE)
+        if custom_baseline_data and custom_baseline_data['total_samples'] > 0:
+            st.write(f"Total Samples Found: {custom_baseline_data['total_samples']}")
+            
+            st.subheader("Samples per Project")
+            if custom_baseline_data['samples_per_project']:
+                st.table(pd.DataFrame(list(custom_baseline_data['samples_per_project'].items()), columns=['Project', 'Number of Samples']))
+            else:
+                st.write("No samples found for any project.")
+
+            st.subheader("Responder/Non-Responder Counts")
+            if custom_baseline_data['response_counts']:
+                st.table(pd.DataFrame(list(custom_baseline_data['response_counts'].items()), columns=['Response', 'Number of Subjects']))
+            else:
+                st.write("No response data available.")
+
+            st.subheader("Male/Female Counts")
+            if custom_baseline_data['sex_counts']:
+                st.table(pd.DataFrame(list(custom_baseline_data['sex_counts'].items()), columns=['Sex', 'Number of Subjects']))
+            else:
+                st.write("No sex data available.")
+            
+            st.subheader("Filtered Data")
+            st.dataframe(custom_baseline_data['data_summary'])
+            if not custom_baseline_data['data_summary'].empty:
+                st.markdown(utils.get_table_download_link(custom_baseline_data['data_summary'], "custom_baseline_query_data.csv"), unsafe_allow_html=True)
+
+        else:
+            st.info('No data found for the custom baseline query (Melanoma, PBMC, TR1, Baseline).')

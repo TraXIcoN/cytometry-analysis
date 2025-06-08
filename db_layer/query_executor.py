@@ -238,3 +238,24 @@ def get_data_for_baseline_analysis(db_file):
         return df
     finally:
         conn.close()
+
+@st.cache_data
+def get_data_for_custom_baseline_query(db_file):
+    conn = sqlite3.connect(db_file)
+    try:
+        query = '''
+            SELECT s.sample_id, s.project, s.response, s.sex
+            FROM samples s
+            WHERE s.condition = 'melanoma' 
+              AND s.sample_type = 'PBMC' 
+              AND s.time_from_treatment_start = 0
+              AND s.treatment = 'tr1'
+        '''
+        df = pd.read_sql_query(query, conn)
+        logger.info(f"get_data_for_custom_baseline_query: Fetched {len(df)} rows.")
+        return df
+    except Exception as e:
+        logger.error(f"Error in get_data_for_custom_baseline_query: {e}")
+        return pd.DataFrame()
+    finally:
+        conn.close()

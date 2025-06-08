@@ -73,3 +73,28 @@ def perform_baseline_analysis(db_file):
         'total_samples': len(df)
     }
     return results
+
+def perform_custom_baseline_query_analysis(db_file):
+    df = database.get_data_for_custom_baseline_query(db_file)
+    if df.empty:
+        return {
+            'samples_per_project': {},
+            'response_counts': {},
+            'sex_counts': {},
+            'total_samples': 0,
+            'data_summary': pd.DataFrame() # Add an empty DataFrame for data summary
+        }
+
+    # Ensure we count unique subjects for response and sex, as one subject might have multiple samples
+    # However, the request is "How many subjects were responders/non-responders" and "How many subjects were males/females"
+    # For this specific query, sample_id is unique per subject at baseline for a given treatment, so len(df) is fine for total.
+    # But for sub-categories, we should be careful if data structure changes. Assuming sample_id is granular enough for now.
+
+    results = {
+        'samples_per_project': df.groupby('project').size().to_dict() if 'project' in df.columns else {},
+        'response_counts': df['response'].value_counts().to_dict() if 'response' in df.columns else {},
+        'sex_counts': df['sex'].value_counts().to_dict() if 'sex' in df.columns else {},
+        'total_samples': len(df),
+        'data_summary': df # Include the raw (or lightly processed) data for display
+    }
+    return results
