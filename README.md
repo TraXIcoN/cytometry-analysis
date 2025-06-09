@@ -4,6 +4,17 @@ This application provides an interactive dashboard for analyzing cytometry data 
 
 ## Features
 
+### Distributed Locking and Robust Initialization
+
+This app implements a robust distributed cache and database initialization system to ensure correct operation across multiple devices and deployments:
+
+- **Distributed Locking:** Only one instance at a time can initialize the database and cache from the CSV, preventing race conditions and partial/empty cache issues.
+- **Cache Validation:** The cache is only used if it contains a valid, non-empty DataFrame with the expected schema (including `sample_id`) and the database is populated. Otherwise, the cache is invalidated and reloaded from the CSV.
+- **Idempotent Startup:** All app instances check both the cache and database population before proceeding, guaranteeing consistency and preventing `KeyError` or missing data issues, even in distributed or multi-user scenarios.
+
+This ensures that the application is robust to restarts, redeployments, and multi-device usage, and that no instance ever gets stuck with a stale or incomplete cache or database.
+
+
 - Interactive data loading and exploration from `cell-count.csv`.
 - Modular codebase with clear separation of concerns across multiple packages (`app.py`, `db_layer`, `reporting_tools`, `ui_modules`).
 - Relative frequency calculations for immune cell populations.

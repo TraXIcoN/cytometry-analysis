@@ -1,11 +1,10 @@
+import os
 import sqlite3
 import pandas as pd
 import logging
 from uuid import uuid4
 import json
 from datetime import datetime
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
 from reporting_tools.cache_manager import cache_dataframe, get_cached_dataframe, invalidate_cache
 
 # Assuming admin_manager.py will be in the same directory for log_operation
@@ -16,12 +15,29 @@ from .schema_manager import CSV_SAMPLE_ID_COLUMN, EXPECTED_CELL_POPULATIONS, EXP
 logger = logging.getLogger(__name__)
 
 def load_csv_to_db(db_file, csv_file, chunk_size=1000):
-    # Check cache first
-    cache_key = f"csv_data:{csv_file}:{chunk_size}"
+    # Use CSV file's last modified time in the cache key
+    csv_mtime = os.path.getmtime(csv_file)
+    cache_key = f"csv_data:{csv_file}:{csv_mtime}:{chunk_size}"
     cached_df = get_cached_dataframe(cache_key)
-    if cached_df is not None:
-        logger.info(f"load_csv_to_db: Using cached data for {csv_file}")
-        return cached_df
+    # Validate cached DataFrame
+    if cached_df is not None and 'sample_id' in cached_df.columns and not cached_df.empty:
+        # Double-check DB is populated
+        conn = sqlite3.connect(db_file)
+        try:
+            count = conn.execute("SELECT COUNT(*) FROM samples").fetchone()[0]
+        except Exception as e:
+            logger.warning(f"load_csv_to_db: Could not check DB population: {e}. Forcing reload from CSV.")
+            count = 0
+        finally:
+            conn.close()
+        if count > 0:
+            logger.info(f"load_csv_to_db: Using valid cached data for {csv_file} and DB is populated ({count} samples).")
+            return cached_df
+        else:
+            logger.warning("load_csv_to_db: DB is empty despite cache. Invalidating cache and reloading from CSV.")
+            invalidate_cache(cache_key)
+    else:
+        logger.info("load_csv_to_db: Cache miss or invalid cache, loading from CSV.")
 
     # Open DB connection synchronously
     conn = sqlite3.connect(db_file)
@@ -116,9 +132,23 @@ def load_csv_to_db(db_file, csv_file, chunk_size=1000):
     conn.close()
 
 def append_csv_to_db(db_file, uploaded_file_object, chunk_size=1000):
+    # Use file object name and last modified time (if available) in cache key
+    file_name_for_logging = getattr(uploaded_file_object, 'name', 'N/A')
+    try:
+        file_mtime = os.path.getmtime(uploaded_file_object.name)
+    except Exception:
+        file_mtime = 'unknown'
+    cache_key = f"csv_data:{file_name_for_logging}:{file_mtime}:{chunk_size}"
+    cached_df = get_cached_dataframe(cache_key)
+    # Validate cached DataFrame
+    if cached_df is not None and 'sample_id' in cached_df.columns and not cached_df.empty:
+        logger.info(f"append_csv_to_db: Using valid cached data for {file_name_for_logging}")
+        return cached_df
+    else:
+        logger.info("append_csv_to_db: Cache miss or invalid cache, loading from uploaded CSV.")
+
     conn = sqlite3.connect(db_file)
     c = conn.cursor()
-    file_name_for_logging = getattr(uploaded_file_object, 'name', 'N/A')
     logger.info(f"append_csv_to_db: Starting to append CSV data from '{file_name_for_logging}' in chunks of {chunk_size}.")
 
     rows_processed = 0
