@@ -15,7 +15,7 @@ from .schema_manager import CSV_SAMPLE_ID_COLUMN, EXPECTED_CELL_POPULATIONS, EXP
 
 logger = logging.getLogger(__name__)
 
-async def load_csv_to_db(db_file, csv_file, chunk_size=1000):
+def load_csv_to_db(db_file, csv_file, chunk_size=1000):
     # Check cache first
     cache_key = f"csv_data:{csv_file}:{chunk_size}"
     cached_df = get_cached_dataframe(cache_key)
@@ -23,11 +23,13 @@ async def load_csv_to_db(db_file, csv_file, chunk_size=1000):
         logger.info(f"load_csv_to_db: Using cached data for {csv_file}")
         return cached_df
 
-    # Use ThreadPoolExecutor for async file operations
-    loop = asyncio.get_event_loop()
-    with ThreadPoolExecutor() as executor:
-        conn = await loop.run_in_executor(executor, sqlite3.connect, db_file)
-        c = conn.cursor()
+    # Open DB connection synchronously
+    conn = sqlite3.connect(db_file)
+    c = conn.cursor()
+
+    csv_df = pd.read_csv(csv_file, na_filter=False)
+    if CSV_SAMPLE_ID_COLUMN != 'sample_id' and CSV_SAMPLE_ID_COLUMN in csv_df.columns:
+        csv_df = csv_df.rename(columns={CSV_SAMPLE_ID_COLUMN: 'sample_id'})
         logger.info(f"load_csv_to_db: Loading CSV '{csv_file}' in chunks of {chunk_size}.")
         start_time = datetime.now()
         
@@ -127,6 +129,8 @@ def append_csv_to_db(db_file, uploaded_file_object, chunk_size=1000):
 
     try:
         for chunk_df in pd.read_csv(uploaded_file_object, chunksize=chunk_size, na_filter=False):
+            if CSV_SAMPLE_ID_COLUMN != 'sample_id' and CSV_SAMPLE_ID_COLUMN in chunk_df.columns:
+                chunk_df = chunk_df.rename(columns={CSV_SAMPLE_ID_COLUMN: 'sample_id'})
             logger.info(f"append_csv_to_db: Processing chunk {rows_processed // chunk_size + 1} with {len(chunk_df)} rows.")
             
             # Determine which cell population columns are actually in this chunk
