@@ -1,122 +1,165 @@
 # Cytometry Data Analysis Dashboard
 
-This application provides an interactive dashboard for analyzing cytometry data from clinical trials. It allows users to explore immune cell population frequencies, compare treatment responses, and visualize data patterns.
+This application provides an interactive dashboard for analyzing cytometry data from clinical trials, enabling users to explore immune cell population frequencies, compare treatment responses, and visualize data patterns using Streamlit.
 
 ## Features
 
 - Interactive data loading and exploration from `cell-count.csv`.
-- Modular codebase with clear separation of concerns (`app.py`, `database.py`, `analysis.py`, `utils.py`).
+- Modular codebase with clear separation of concerns across multiple packages (`app.py`, `db_layer`, `reporting_tools`, `ui_modules`).
 - Relative frequency calculations for immune cell populations.
 - Response comparison analysis with statistical significance testing.
 - Baseline statistics for treatment groups.
-- Modern, user-friendly interface using Streamlit with a two-column layout (controls on the left, data display on the right).
-- Dynamic data updates: adding or removing samples immediately refreshes the view.
+- Modern, user-friendly interface with a two-column Streamlit layout (controls on the left, data display on the right).
+- Dynamic data updates: adding or removing samples refreshes views instantly.
 - Conditional CSV download for analysis results.
+- PDF report generation with key findings and visualizations.
+- Caching of frequent queries and computations to enhance performance.
+- Checkpoint feature: Users can revert to previous database snapshots stored in a `checkpoints` folder.
+- Manual sample addition: Users can add new samples directly via the UI, with input as CSV rows.
+- Multi-format output: Reports available in CSV, Excel, and PDF formats, plus downloadable plot images.
 
 ## Project Structure
 
-The application is organized into several Python modules to promote maintainability and scalability:
+The application is organized into several Python modules and packages to ensure maintainability and scalability:
 
-- `app.py`: The main Streamlit application file. Handles UI elements, user interactions, and orchestrates calls to other modules.
-- `database.py`: Manages all interactions with the SQLite database, including initialization, data loading (from `cell-count.csv`), and CRUD operations for samples and cell counts.
-- `analysis.py`: Contains functions for data processing and statistical analysis, such as calculating frequency tables, comparing treatment responses, and performing baseline analysis.
-- `utils.py`: Provides utility functions, like generating download links for CSV files.
-- `requirements.txt`: Lists all Python dependencies required to run the application.
-- `cell-count.csv`: The initial dataset used by the application (must be provided by the user at first run if the database is not already populated).
-- `README.md`: This file, providing information about the project.
+- `app.py`: Main Streamlit application file, managing UI interactions and orchestrating module calls.
+- `db_layer`: Package for database interactions:
+  - `__init__.py`: Package initialization.
+  - `admin_manager.py`: Manages database checkpoints and logging.
+  - `crud_ops.py`: Handles CRUD operations for database management.
+  - `data_loader.py`: Manages loading and appending data to the database.
+  - `query_executor.py`: Executes data retrieval queries.
+  - `schema_manager.py`: Initializes and manages the database schema.
+- `reporting_tools`: Package for analysis and reporting:
+  - `__init__.py`: Package initialization.
+  - `analysis.py`: Functions for data processing and statistical analysis.
+  - `reporting.py`: Generates PDF reports from data.
+  - `utils.py`: Utility functions, including CSV/Excel download link generation and plot image export.
+- `ui_modules`: Package for UI components:
+  - `__init__.py`: Package initialization.
+  - `app_helpers.py`: Initializes application and session state.
+  - `left_column.py`: Renders controls in the left column.
+  - `right_column_tabs.py`: Manages tabs in the right column.
+- `requirements.txt`: Lists all Python dependencies.
+- `cell-count.csv`: Initial dataset for database population (required on first run if `cytometry_data.db` is absent).
+- `cytometry_data.db`: SQLite database file (generated on first run).
+- `checkpoints`: Folder storing database snapshots for checkpoint reversion.
+- `README.md`: This file, providing project details.
+- `.gitignore`: Excludes temporary files and caches.
+- `MANIFEST.in`: Configures package distribution.
+- `setup.py`: Facilitates package installation.
 
 ## Database Schema Design
 
-The database is designed to be scalable and maintainable:
+The database is designed for scalability and maintainability:
 
 1. **Samples Table**
 
-   - Stores sample metadata
-   - Normalized structure for easy expansion
-   - Supports multiple sample types and treatments
+   - Stores sample metadata (e.g., `sample_id`, `project`, `condition`, `age`, `sex`, `treatment`, `response`, `sample_type`, `time_from_treatment_start`).
+   - Normalized structure for easy expansion.
+   - Supports multiple sample types and treatments.
 
 2. **Cell Counts Table**
 
-   - Normalized storage of cell population counts
-   - Flexible for adding new cell populations
-   - Efficient querying through proper indexing
+   - Stores cell population counts (e.g., `b_cell`, `cd8_t_cell`, etc.) with a unique `id`, `sample_id`, `population`, and `count`.
+   - Flexible for adding new cell populations.
+   - Efficient querying with proper indexing.
 
-3. **Analysis Results Table**
-   - Stores pre-calculated analysis results
-   - Optimizes performance for repeated queries
-   - Maintains data consistency
+3. **Operation Log Table**
+   - Logs database operations (e.g., sample additions, deletions) with timestamps for auditing and debugging.
+
+## Rationale for Design and Scalability
+
+The database schema and codebase are designed with scalability and flexibility in mind:
+
+- **Hundreds of Projects**: The `Samples Table` stores project-specific metadata, enabling efficient management and querying across multiple projects.
+- **Thousands of Samples**: The normalized structure and indexing on key fields (e.g., `sample_id`, `time_from_treatment_start`) ensure quick data retrieval and scalability.
+- **Various Types of Analytics**: Separating `Samples` and `Cell Counts` tables supports diverse analyses (e.g., frequency calculations, response comparisons) without performance degradation. The `Operation Log` enhances traceability for large-scale operations.
+- **Code Modularity**: The package-based structure allows independent updates to database, analysis, or UI components, supporting long-term maintenance and expansion.
+- **Caching**: Frequent queries (e.g., frequency tables, baseline stats) are cached in-memory to reduce database load and improve response times, especially beneficial as data volume grows.
+- **Checkpoint System**: The `checkpoints` folder enables database reversion, ensuring data recovery and experimentation flexibility.
+
+This design ensures the application remains performant and adaptable as the dataset expands to include more projects, samples, or analytical needs.
 
 ## Installation
 
 1. Create a virtual environment:
 
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
 
 2. Install dependencies:
 
-```bash
-pip install -r requirements.txt
-```
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 3. Run the application:
-
-```bash
-streamlit run app.py
-```
+   ```bash
+   streamlit run app.py
+   ```
 
 ## Usage
 
-The application interface is divided into two main columns:
-- The **left column** houses controls for:
-    - Uploading the `cell-count.csv` file (if not already loaded for the session and the database is empty).
-    - Filtering data based on available metadata.
-    - Adding new samples or removing existing ones (data views refresh immediately).
-    - Selecting the type of analysis to perform.
-- The **right column** displays:
-    - Data tables (e.g., raw counts, relative frequencies).
-    - Interactive visualizations (e.g., plots for relative frequencies, response comparisons).
-    - Statistical summaries and results.
+The dashboard features a two-column layout:
+
+- **Left Column**: Contains controls for:
+  - Uploading `cell-count.csv` (required on first run if the database is empty).
+  - Filtering data by metadata (e.g., condition, treatment).
+  - Adding or removing samples (views update dynamically; new samples can be added manually via CSV row input).
+  - Reverting to a previous checkpoint from the `checkpoints` folder.
+  - Selecting analysis types (e.g., frequencies, response comparison).
+- **Right Column**: Displays:
+  - Data tables (e.g., raw counts, relative frequencies).
+  - Interactive visualizations (e.g., boxplots for response comparisons).
+  - Statistical summaries and results.
+  - Options to download tables as CSV/Excel, reports as PDF, and plots as images.
 
 **Initial Setup:**
-On the first run, or if the application's database file (`cytometry_data.db`) is not found, the application will prompt you to upload the `cell-count.csv` file. This file is used to initialize and populate the database.
+On first run or if `cytometry_data.db` is missing, upload `cell-count.csv` to initialize and populate the database.
 
 **Analysis Types:**
 
-Users can select from various analysis options, which are then displayed in the right column:
-- **Relative Frequencies**: View and plot the relative frequencies of different immune cell populations across samples.
-- **Response Comparison**: Compare cell population statistics between predefined responder and non-responder groups, including statistical significance tests.
-- **Baseline Statistics**: View descriptive statistics for samples categorized under a 'Baseline' timepoint or similar designation.
-
-A 'Download CSV' button appears contextually when tabular data (like analysis results or filtered datasets) is displayed, allowing users to export it.
-
+- **Relative Frequencies**: Displays and plots cell population percentages.
+- **Response Comparison**: Compares responder vs. non-responder statistics with significance tests.
+- **Baseline Statistics**: Shows aggregates for baseline samples (e.g., `time_from_treatment_start = 0`).
 
 ## Data Processing
 
 The application automatically:
 
-- Loads and validates data
-- Calculates relative frequencies
-- Performs statistical analysis
-- Generates visualizations
-- Maintains data consistency
+- Loads and validates data from `cell-count.csv`.
+- Calculates relative frequencies with precision.
+- Performs statistical analysis (e.g., t-tests).
+- Generates interactive visualizations.
+- Maintains data consistency with dynamic updates.
+- Utilizes caching for frequently accessed results to enhance performance.
+- Manages checkpoints for database reversion.
 
 ## Scalability Considerations
 
-The database schema is designed to:
+The schema supports:
 
-- Handle multiple projects and sample types
-- Support thousands of samples
-- Allow for new cell populations
-- Maintain data integrity through foreign key constraints
-- Optimize query performance with proper indexing
+- Multiple projects and sample types.
+- Thousands of samples with indexed queries.
+- New cell populations via flexible table design.
+- Data integrity with foreign key constraints.
+- **Caching Scalability**: In-memory caching improves performance for frequent queries. For larger datasets or concurrent users, consider integrating a distributed cache (e.g., Redis) to scale horizontally.
+- **Checkpoint Scalability**: The `checkpoints` folder works for small datasets but may require a versioned storage system (e.g., S3) for large-scale or cloud deployments.
+- **Database Transition**: The current SQLite setup is suitable for thousands of samples. For millions, migrate to PostgreSQL with connection pooling and sharding, leveraging the existing schema with minor adjustments.
 
 ## Future Enhancements
 
-- Add more statistical tests
-- Implement data validation rules
-- Add export functionality for analysis results
-- Implement user authentication
-- Add more visualization options
+- Add advanced visualizations (e.g., heatmaps, PCA plots).
+- Implement user authentication and role-based access.
+- Enhance PDF reports with customizable templates.
+- Integrate predictive analytics (e.g., response prediction models).
+- Develop a custom query builder for flexible data filtering.
+- Add collaboration features, such as saving and sharing analysis configurations via URL or JSON files for sharing with colleagues (e.g., Yah D’yada), and a comment/annotation system for sample observations.
+- Implement comprehensive testing and reliability measures, including unit tests, integration tests, and a CI/CD pipeline.
+
+## GitHub Pages Link
+
+[Include link to your GitHub Pages deployment here once available.]
