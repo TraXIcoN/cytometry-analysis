@@ -13,7 +13,6 @@ venv/
 .env
 
 # Data files
-cell-count.csv
 *.db
 cytometry.db
 
