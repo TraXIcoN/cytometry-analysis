@@ -7,3 +7,7 @@ python-dotenv==1.0.0
 openpyxl==3.1.2
 reportlab==4.2.0
 kaleido==0.2.1
+redis==5.0.1
+upstash-redis
+aiohttp==3.9.1
+asyncio==3.4.3

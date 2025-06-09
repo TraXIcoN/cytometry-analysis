@@ -1,0 +1,8 @@
+include *.py
+include *.csv
+recursive-include db_layer *
+recursive-include reporting_tools *
+recursive-include config *
+include .env
+include requirements.txt
+include README.md

@@ -2,8 +2,11 @@ import sqlite3
 import pandas as pd
 import logging
 from uuid import uuid4
-import json # Though not directly used in the moved functions, it was in the original file and might be for future use
-from datetime import datetime # Same as json
+import json
+from datetime import datetime
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from reporting_tools.cache_manager import cache_dataframe, get_cached_dataframe, invalidate_cache
 
 # Assuming admin_manager.py will be in the same directory for log_operation
 from .admin_manager import log_operation 
@@ -12,18 +15,33 @@ from .schema_manager import CSV_SAMPLE_ID_COLUMN, EXPECTED_CELL_POPULATIONS, EXP
 
 logger = logging.getLogger(__name__)
 
-def load_csv_to_db(db_file, csv_file, chunk_size=1000):
-    conn = sqlite3.connect(db_file)
-    c = conn.cursor()
-    logger.info(f"load_csv_to_db: Loading CSV '{csv_file}' in chunks of {chunk_size}.")
-    
-    processed_rows = 0
-    for chunk_df in pd.read_csv(csv_file, chunksize=chunk_size, na_filter=False):
-        logger.info(f"load_csv_to_db: Processing chunk {processed_rows // chunk_size + 1} with {len(chunk_df)} rows.")
+async def load_csv_to_db(db_file, csv_file, chunk_size=1000):
+    # Check cache first
+    cache_key = f"csv_data:{csv_file}:{chunk_size}"
+    cached_df = get_cached_dataframe(cache_key)
+    if cached_df is not None:
+        logger.info(f"load_csv_to_db: Using cached data for {csv_file}")
+        return cached_df
+
+    # Use ThreadPoolExecutor for async file operations
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor() as executor:
+        conn = await loop.run_in_executor(executor, sqlite3.connect, db_file)
+        c = conn.cursor()
+        logger.info(f"load_csv_to_db: Loading CSV '{csv_file}' in chunks of {chunk_size}.")
+        start_time = datetime.now()
+        
+        processed_rows = 0
+        chunks = pd.read_csv(csv_file, chunksize=chunk_size, na_filter=False)
+        for chunk_df in chunks:
+            logger.info(f"load_csv_to_db: Processing chunk {processed_rows // chunk_size + 1} with {len(chunk_df)} rows.")
         for _, row in chunk_df.iterrows():
             try:
                 sample_id_val = str(row[CSV_SAMPLE_ID_COLUMN]).strip() if CSV_SAMPLE_ID_COLUMN in row and str(row[CSV_SAMPLE_ID_COLUMN]).strip() != "" else None
                 logger.info(f"load_csv_to_db: Processing row with CSV sample value: '{row.get(CSV_SAMPLE_ID_COLUMN)}', parsed as sample_id: '{sample_id_val}'")
+                # Cache individual chunks for faster future processing
+                chunk_cache_key = f"csv_chunk:{csv_file}:{processed_rows // chunk_size}"
+                cache_dataframe(chunk_df, chunk_cache_key, expire_seconds=3600)
                 if not sample_id_val:
                     logger.warning(f"load_csv_to_db: Skipping row due to missing or empty sample_id. Original CSV value: '{row.get(CSV_SAMPLE_ID_COLUMN)}'. Row data: {row.to_dict()}")
                     continue
@@ -87,6 +105,12 @@ def load_csv_to_db(db_file, csv_file, chunk_size=1000):
         logger.info(f"load_csv_to_db: Committed chunk. Total rows processed so far: {processed_rows}")
 
     logger.info(f"load_csv_to_db: Finished loading. Total rows processed: {processed_rows}")
+    logger.info(f"load_csv_to_db: Total time taken: {datetime.now() - start_time}")
+    
+    # Cache the final DataFrame
+    cache_dataframe(chunk_df, cache_key, expire_seconds=3600)
+    
+    return chunk_df
     conn.close()
 
 def append_csv_to_db(db_file, uploaded_file_object, chunk_size=1000):

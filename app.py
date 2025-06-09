@@ -8,8 +8,8 @@ import plotly.graph_objects as go
 from uuid import uuid4
 
 import db_layer as database
-import analysis
-import utils
+from reporting_tools import analysis
+from reporting_tools import utils
 from ui_modules.app_helpers import initialize_app, initialize_session_state
 from ui_modules.left_column import render_left_column_controls
 from ui_modules.right_column_tabs import render_viewer_summary_tab, render_cell_population_plots_tab, render_frequency_table_tab, render_treatment_response_tab, render_baseline_characteristics_tab, render_custom_baseline_query_tab

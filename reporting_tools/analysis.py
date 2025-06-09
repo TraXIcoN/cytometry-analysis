@@ -3,8 +3,14 @@ import scipy.stats as stats
 import plotly.express as px
 import plotly.graph_objects as go 
 import db_layer as database
+from .cache_manager import cache_dataframe, get_cached_dataframe, invalidate_cache
 
 def calculate_frequency_table(db_file):
+    cache_key = f"freq_table:{db_file}"
+    cached_df = get_cached_dataframe(cache_key)
+    if cached_df is not None:
+        return cached_df
+
     df = database.get_data_for_frequency_table(db_file)
     if df.empty or 'count' not in df.columns or 'sample_id' not in df.columns or 'total_count' not in df.columns:
         return pd.DataFrame(columns=['sample_id', 'population', 'count', 'total_count', 'percentage'])
@@ -13,9 +19,16 @@ def calculate_frequency_table(db_file):
     # Ensure 'total_count' is not zero to avoid division by zero
     df['percentage'] = df.apply(lambda row: round(row['count'] / row['total_count'] * 100, 2) if row['total_count'] > 0 else 0, axis=1)
     
-    return df[['sample_id', 'population', 'count', 'total_count', 'percentage']]
+    result_df = df[['sample_id', 'population', 'count', 'total_count', 'percentage']]
+    cache_dataframe(result_df, cache_key, expire_seconds=3600)
+    return result_df
 
 def perform_treatment_response_analysis(db_file):
+    cache_key = f"treatment_response:{db_file}"
+    cached_result = get_cached_dataframe(cache_key)
+    if cached_result is not None:
+        return cached_result
+
     df = database.get_data_for_treatment_response_analysis(db_file)
     if df.empty:
         return pd.DataFrame(), [], go.Figure()
@@ -53,7 +66,10 @@ def perform_treatment_response_analysis(db_file):
         if not df.empty:
              fig = px.box(df, x='population', y='percentage', color='response',
                      title='Cell Population Frequencies: Responders vs Non-Responders')
+             print(f"Plot created with {len(fig.data)} traces.")  # Debug plot content
     
+    # Cache the results
+    cache_dataframe((df, results, fig), cache_key, expire_seconds=3600)
     return df, results, fig
 
 def perform_baseline_analysis(db_file):

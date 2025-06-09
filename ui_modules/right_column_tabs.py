@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
-import utils
-import analysis
-import reporting # Added for PDF reporting
+from reporting_tools import utils
+from reporting_tools import analysis
+from reporting_tools import reporting # Added for PDF reporting
 import plotly.express as px # Ensure px is available for potential plot generation for PDF
 
 def render_viewer_summary_tab(display_df, ndf, show_filtered_only):
@@ -167,10 +167,15 @@ def render_cell_population_plots_tab(ndf):
 def render_frequency_table_tab(db_file):
     st.header('Frequency Table Analysis (All Data)')
     freq_table_df = analysis.calculate_frequency_table(db_file)
-    if not freq_table_df.empty:
-        st.dataframe(freq_table_df)
-        col1, col2 = st.columns(2, gap="small")
-        with col1:
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader('Population Distribution')
+        pie_fig = px.pie(freq_table_df, names='population', values='count', title='Population Distribution')
+        st.plotly_chart(pie_fig, use_container_width=True)
+    with col2:
+        if not freq_table_df.empty:
+            st.dataframe(freq_table_df)
             csv_bytes = utils.df_to_csv_bytes(freq_table_df)
             st.download_button(
                 label="Download CSV",
@@ -179,7 +184,6 @@ def render_frequency_table_tab(db_file):
                 mime="text/csv",
                 key="freq_csv"
             )
-        with col2:
             excel_bytes = utils.df_to_excel_bytes(freq_table_df)
             st.download_button(
                 label="Download Excel",
@@ -188,7 +192,7 @@ def render_frequency_table_tab(db_file):
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="freq_excel"
             )
-    else:
+    if freq_table_df.empty:
         st.info("No data available for frequency table.")
 
 def render_treatment_response_tab(db_file):
