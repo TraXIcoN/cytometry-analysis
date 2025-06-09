@@ -1,3 +1,5 @@
+![til](https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExaWNhcGM2MzZ6N2Fnam41NTByNHExcDJ5bnVuN2dzYWwzaXB6bHh0MCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/L1R1tvI9svkIWwpVYr/giphy.gif)
+
 # Cytometry Data Analysis Dashboard
 
 This application provides an interactive dashboard for analyzing cytometry data from clinical trials, enabling users to explore immune cell population frequencies, compare treatment responses, and visualize data patterns using Streamlit.
@@ -171,6 +173,6 @@ The schema supports:
 - Add collaboration features, such as saving and sharing analysis configurations via URL or JSON files for sharing with colleagues (e.g., Yah D’yada), and a comment/annotation system for sample observations.
 - Implement comprehensive testing and reliability measures, including unit tests, integration tests, and a CI/CD pipeline.
 
-## GitHub Pages Link
+## Still with me? Clearly, we should be having a conversation :p
 
-[Include link to your GitHub Pages deployment here once available.]
+![til](https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWFyMzF4M2k3cGd3dHBwMWhzNm4za2ZxZXdmNXczMDF4aXI5ZDZmYiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/DOqgRsrlZp0bJ8z26f/giphy.gif)
